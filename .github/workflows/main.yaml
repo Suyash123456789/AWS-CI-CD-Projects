@@ -8,24 +8,20 @@ on:
       - README.md
 
 jobs:
-
   integration:
-    name: Lint & Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Run Linting
-        run: echo "Run linting or unit tests here"
-      # Example: run your actual tests
-      # - name: Run Tests
-      #   run: pytest tests/
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Run unit tests / lint
+        run: echo "Linting code or running unit tests here"
 
   build_and_push_ecr:
-    name: Build & Push Docker to ECR
     needs: integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -35,26 +31,31 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, Tag, and Push Docker Image
+      - name: Build, tag, and push Docker image
         run: |
-          docker build -t ${{ secrets.ECR_REPOSITORY_NAME }} .
-          docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
-          docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+          IMAGE_NAME=${{ secrets.ECR_REPOSITORY_NAME }}
+          ECR_URI=${{ secrets.AWS_ECR_LOGIN_URI }}
+
+          # Build Docker image
+          docker build -t $IMAGE_NAME .
+
+          # Tag for ECR
+          docker tag $IMAGE_NAME:latest $ECR_URI/$IMAGE_NAME:latest
+
+          # Push to ECR
+          docker push $ECR_URI/$IMAGE_NAME:latest
 
   deploy_to_ec2:
-    name: Deploy to EC2
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Deploy Docker Container on EC2
+      - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} "\
-            sudo docker stop studentperformance || true && \
-            sudo docker rm studentperformance || true && \
-            sudo docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
-            sudo docker run -d --name studentperformance -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest \
-          "
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
+          "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
+           docker run -d -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
