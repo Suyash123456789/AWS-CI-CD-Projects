@@ -8,23 +8,30 @@ on:
       - README.md
 
 jobs:
+  # ---------------------------
+  # Job 1: Run integration tests
+  # ---------------------------
   integration:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Run unit tests / lint
-        run: echo "Linting code or running unit tests here"
+        uses: actions/checkout@v2
 
+      - name: Run linting and unit tests
+        run: echo "Run linting or unit tests here"
+
+  # ---------------------------
+  # Job 2: Build and push to ECR
+  # ---------------------------
   build_and_push_ecr:
     needs: integration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v2
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -33,29 +40,26 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push Docker image
+      - name: Build, tag, and push Docker image to ECR
         run: |
-          IMAGE_NAME=${{ secrets.ECR_REPOSITORY_NAME }}
-          ECR_URI=${{ secrets.AWS_ECR_LOGIN_URI }}
+          docker build -t studentperformance .
+          docker tag studentperformance:latest ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest
+          docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest
 
-          # Build Docker image
-          docker build -t $IMAGE_NAME .
-
-          # Tag for ECR
-          docker tag $IMAGE_NAME:latest $ECR_URI/$IMAGE_NAME:latest
-
-          # Push to ECR
-          docker push $ECR_URI/$IMAGE_NAME:latest
-
+  # ---------------------------
+  # Job 3: Deploy to EC2
+  # ---------------------------
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v2
 
-      - name: Deploy to EC2
+      - name: Deploy Docker image to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
-          "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
-           docker run -d -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest && \
+           docker stop studentperformance || true && \
+           docker rm studentperformance || true && \
+           docker run -d --name studentperformance -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest"
