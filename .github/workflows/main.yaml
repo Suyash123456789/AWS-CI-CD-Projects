@@ -1,4 +1,5 @@
-name: workflow
+name: CI-CD Workflow
+
 on:
   push:
     branches:
@@ -7,37 +8,53 @@ on:
       - README.md
 
 jobs:
+
   integration:
+    name: Lint & Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - run: echo "Linting code or running unit tests here"
+      - uses: actions/checkout@v3
+      - name: Run Linting
+        run: echo "Run linting or unit tests here"
+      # Example: run your actual tests
+      # - name: Run Tests
+      #   run: pytest tests/
 
   build_and_push_ecr:
+    name: Build & Push Docker to ECR
     needs: integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
-      - name: Build, tag, and push image to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, Tag, and Push Docker Image
         run: |
           docker build -t ${{ secrets.ECR_REPOSITORY_NAME }} .
           docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
           docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
   deploy_to_ec2:
+    name: Deploy to EC2
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Deploy to EC2
+      - uses: actions/checkout@v3
+
+      - name: Deploy Docker Container on EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
-          "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && docker run -d -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} "\
+            sudo docker stop studentperformance || true && \
+            sudo docker rm studentperformance || true && \
+            sudo docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
+            sudo docker run -d --name studentperformance -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest \
+          "
