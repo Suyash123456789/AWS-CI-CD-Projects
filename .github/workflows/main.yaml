@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI-CD Workflow
 
 on:
   push:
@@ -11,18 +11,14 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-
-      - name: Run Tests / Lint
-        run: echo "Running unit tests or linting here..."
+      - uses: actions/checkout@v2
+      - run: echo "Run tests or linting here"
 
   build_and_push_ecr:
     needs: integration
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -34,26 +30,23 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, Tag, and Push Docker Image to ECR
+      - name: Build, tag, and push Docker image to ECR
         run: |
+          IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
           echo "Building Docker image..."
           docker build -t ${{ secrets.ECR_REPOSITORY_NAME }} .
-
-          echo "Tagging Docker image for ECR..."
-          docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest \
-                     ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
-
+          echo "Tagging Docker image..."
+          docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest $IMAGE_URI
           echo "Pushing Docker image to ECR..."
-          docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+          docker push $IMAGE_URI
 
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-      - name: Deploy to EC2
+      - name: Deploy Docker container to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
           "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
