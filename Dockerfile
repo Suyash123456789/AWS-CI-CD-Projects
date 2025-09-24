@@ -4,27 +4,22 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Copy all project files
+# Copy source code
 COPY . /app
 
-# Avoid interactive prompts and fix warnings
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install dependencies
+# Install system dependencies
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends \
         awscli \
         curl \
         unzip \
         git \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies if you have a requirements.txt
+# Install Python dependencies (if you have requirements.txt)
+# COPY requirements.txt .
 # RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port (if needed)
-# EXPOSE 8080
-
-# Default command (change if needed)
-CMD ["python3", "app.py"]
+# Default command (optional, override when running container)
+CMD ["python3"]
