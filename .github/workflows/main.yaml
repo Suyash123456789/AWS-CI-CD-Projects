@@ -1,4 +1,4 @@
-name: CI-CD Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -8,24 +8,21 @@ on:
       - README.md
 
 jobs:
-  # ------------------------
-  # Integration Job
-  # ------------------------
   integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Run Unit Tests / Lint
-        run: echo "Linting code or running unit tests here"
+      - name: Checkout Code
+        uses: actions/checkout@v2
 
-  # ------------------------
-  # Build & Push to ECR
-  # ------------------------
+      - name: Run Tests / Lint
+        run: echo "Running unit tests or linting here..."
+
   build_and_push_ecr:
     needs: integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout Code
+        uses: actions/checkout@v2
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -37,25 +34,26 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, Tag, and Push Docker Image
+      - name: Build, Tag, and Push Docker Image to ECR
         run: |
-          # Build Docker image locally
+          echo "Building Docker image..."
           docker build -t ${{ secrets.ECR_REPOSITORY_NAME }} .
 
-          # Tag image for ECR
-          docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+          echo "Tagging Docker image for ECR..."
+          docker tag ${{ secrets.ECR_REPOSITORY_NAME }}:latest \
+                     ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
-          # Push to ECR
+          echo "Pushing Docker image to ECR..."
           docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
-  # ------------------------
-  # Deploy to EC2
-  # ------------------------
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy Docker Container on EC2
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
           "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
