@@ -1,4 +1,4 @@
-name: CI-CD Workflow
+name: CI/CD Workflow
 
 on:
   push:
@@ -8,27 +8,22 @@ on:
       - README.md
 
 jobs:
-  # ---------------------------
-  # Job 1: Run integration tests
-  # ---------------------------
+  # Step 1: Integration / Lint & Test
   integration:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
+      - name: Run Lint / Unit Tests
+        run: |
+          echo "Linting code or running unit tests here"
+          # Example: npm install && npm test
 
-      - name: Run linting and unit tests
-        run: echo "Run linting or unit tests here"
-
-  # ---------------------------
-  # Job 2: Build and push to ECR
-  # ---------------------------
+  # Step 2: Build Docker image and push to ECR
   build_and_push_ecr:
     needs: integration
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -42,21 +37,23 @@ jobs:
 
       - name: Build, tag, and push Docker image to ECR
         run: |
+          # Build Docker image with local name
           docker build -t studentperformance .
+
+          # Tag Docker image with full ECR URI
           docker tag studentperformance:latest ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest
+
+          # Push to ECR
           docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest
 
-  # ---------------------------
-  # Job 3: Deploy to EC2
-  # ---------------------------
+  # Step 3: Deploy Docker image to EC2
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-      - name: Deploy Docker image to EC2
+      - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
           "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest && \
