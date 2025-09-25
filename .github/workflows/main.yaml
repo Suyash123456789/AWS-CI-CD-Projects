@@ -1,70 +1,48 @@
-name: CI-CD Workflow
+name: Build and Push to ECR
 
 on:
   push:
     branches:
       - main
-    paths-ignore:
-      - README.md
 
 jobs:
-  # -----------------------------
-  # 1️⃣ Integration / Lint & Test
-  # -----------------------------
-  integration:
+  build-and-push:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Lint / Unit Tests
-        run: |
-          echo "Running linting and unit tests..."
-          # Replace this with your actual lint/test commands
-          echo "All tests passed!"
 
-  # -----------------------------
-  # 2️⃣ Build and Push to ECR
-  # -----------------------------
-  build_and_push_ecr:
-    needs: integration
-    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      # 1️⃣ Check out your repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      # 2️⃣ Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-2   # change if your ECR is in a different region
 
+      # 3️⃣ Login to Amazon ECR
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, Tag, and Push Docker Image
+      # 4️⃣ Build, tag, and push the Docker image
+      - name: Build, tag, and push image
         run: |
-          # Full ECR image URI
-          IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest"
-          
+          # Replace with your own repository name if different
+          REPOSITORY="studentperformance"
+          REGION="us-east-2"
+          ACCOUNT_ID="${{ secrets.AWS_ACCOUNT_ID }}"
+
+          # Full image URI
+          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPOSITORY}:latest"
+
           echo "Building Docker image..."
-          docker build -t studentperformance .
+          docker build -t ${REPOSITORY}:latest .
 
           echo "Tagging Docker image for ECR..."
-          docker tag studentperformance:latest $IMAGE_URI
+          docker tag ${REPOSITORY}:latest ${IMAGE_URI}
 
           echo "Pushing Docker image to ECR..."
-          docker push $IMAGE_URI
-
-  # -----------------------------
-  # 3️⃣ Deploy to EC2
-  # -----------------------------
-  deploy_to_ec2:
-    needs: build_and_push_ecr
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy Docker image to EC2
-        run: |
-          IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/studentperformance:latest"
-          echo "Deploying $IMAGE_URI to EC2..."
-          
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
-          "docker pull $IMAGE_URI && docker stop studentperformance || true && docker rm studentperformance || true && docker run -d --name studentperformance -p 8080:8080 $IMAGE_URI"
+          docker push ${IMAGE_URI}
