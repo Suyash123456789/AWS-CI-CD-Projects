@@ -20,7 +20,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || true
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          fi
       - name: Run tests (optional)
         run: |
           if [ -d "tests" ]; then
@@ -49,21 +51,23 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
+          # ✅ Make sure secret values have no trailing newline
           IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
-          echo "Building image: $IMAGE_URI"
-          docker build -t $IMAGE_URI .
-          docker push $IMAGE_URI
+          echo "Building and pushing Docker image: $IMAGE_URI"
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
 
   # 3️⃣ Deploy Docker Image to EC2
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
       - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
-          "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
-           docker stop my_app || true && \
-           docker rm my_app || true && \
-           docker run -d --name my_app -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} "
+            docker pull $IMAGE_URI &&
+            docker stop my_app || true &&
+            docker rm my_app || true &&
+            docker run -d --name my_app -p 8080:8080 $IMAGE_URI
+          "
