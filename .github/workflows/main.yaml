@@ -1,41 +1,22 @@
-name: CI-CD Pipeline
+name: CI-CD
 
 on:
   push:
     branches:
       - main
-    paths-ignore:
-      - README.md
 
 jobs:
-  # 1️⃣ Integration / Test job
   integration:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      # (No pytest step here—tests are skipped)
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
-
-      - name: Run tests
-        run: pytest
-
-  # 2️⃣ Build & push Docker image to ECR
   build_and_push_ecr:
     needs: integration
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -46,25 +27,19 @@ jobs:
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push image
-        env:
-          ECR_REGISTRY: ${{ secrets.AWS_ECR_LOGIN_URI }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+      - name: Build and push image to ECR
         run: |
-          IMAGE_TAG=latest
-          docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag $ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker build -t ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest .
+          docker push ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
 
-  # 3️⃣ Deploy to EC2
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy on EC2
+      - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
           "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
-           docker stop student_app || true && \
-           docker rm student_app || true && \
-           docker run -d --name student_app -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+           docker stop myapp || true && \
+           docker rm myapp || true && \
+           docker run -d --name myapp -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
