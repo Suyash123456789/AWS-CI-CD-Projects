@@ -1,48 +1,52 @@
-name: Build and Push to ECR
+name: CI/CD to Amazon ECR
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  build-and-push:
+  integration:
     runs-on: ubuntu-latest
-
     steps:
-      # 1️⃣ Check out your repository
-      - name: Checkout repository
+      - name: Checkout source
         uses: actions/checkout@v4
 
-      # 2️⃣ Configure AWS credentials
+      - name: Run tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pytest
+
+  build_and_push_ecr:
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-2   # change if your ECR is in a different region
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      # 3️⃣ Login to Amazon ECR
-      - name: Login to Amazon ECR
-        id: ecr-login
+      - name: Log in to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # 4️⃣ Build, tag, and push the Docker image
-      - name: Build, tag, and push image
+      - name: Build Docker image
         run: |
-          # Replace with your own repository name if different
-          REPOSITORY="studentperformance"
-          REGION="us-east-2"
-          ACCOUNT_ID="${{ secrets.AWS_ACCOUNT_ID }}"
+          IMAGE_URI=${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          docker build -t $IMAGE_URI .
 
-          # Full image URI
-          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPOSITORY}:latest"
+      - name: Push to Amazon ECR
+        run: docker push $IMAGE_URI
 
-          echo "Building Docker image..."
-          docker build -t ${REPOSITORY}:latest .
-
-          echo "Tagging Docker image for ECR..."
-          docker tag ${REPOSITORY}:latest ${IMAGE_URI}
-
-          echo "Pushing Docker image to ECR..."
-          docker push ${IMAGE_URI}
+  deploy:
+    needs: build_and_push_ecr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to environment
+        run: |
+          echo "Deploy step – pull and run image on your infra or ECS"
