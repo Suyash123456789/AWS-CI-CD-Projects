@@ -1,42 +1,67 @@
-name: CI-CD
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - README.md
 
 jobs:
-  build_and_push_ecr:
+  # ----------------------------
+  # Step 1: Integration / Lint / Tests
+  # ----------------------------
+  integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.12
+      # Skip tests if not needed
+      - name: Skip tests
+        run: echo "Skipping tests in this workflow"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+  # ----------------------------
+  # Step 2: Build Docker image and push to ECR
+  # ----------------------------
+  build_and_push_ecr:
+    needs: integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Log in to Amazon ECR
+      - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and push image to ECR
+      - name: Build and push Docker image to ECR
         run: |
           IMAGE_URI=${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest
           echo "Building image: $IMAGE_URI"
-          docker build -t $IMAGE_URI .          # ✅ build context is the dot on the same line
+          docker build -t $IMAGE_URI .
           docker push $IMAGE_URI
 
+  # ----------------------------
+  # Step 3: Deploy Docker image to EC2
+  # ----------------------------
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+
       - name: Deploy to EC2
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} \
           "docker pull ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest && \
-           docker stop myapp || true && \
-           docker rm myapp || true && \
-           docker run -d --name myapp -p 8080:8080 \
-             ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+           docker stop studentperformance || true && \
+           docker rm studentperformance || true && \
+           docker run -d --name studentperformance -p 8080:8080 ${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
