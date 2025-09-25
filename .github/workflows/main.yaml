@@ -8,6 +8,7 @@ on:
       - README.md
 
 jobs:
+  # 1️⃣ Integration / Lint / Unit Tests
   integration:
     runs-on: ubuntu-latest
     steps:
@@ -29,27 +30,31 @@ jobs:
             echo "No tests found, skipping..."
           fi
 
+  # 2️⃣ Build and Push Docker Image to ECR
   build_and_push_ecr:
     needs: integration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v1
+
       - name: Build and Push Docker Image
         run: |
-          # ✅ IMAGE_URI must resolve correctly
           IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
           echo "Building image: $IMAGE_URI"
           docker build -t $IMAGE_URI .
           docker push $IMAGE_URI
 
+  # 3️⃣ Deploy Docker Image to EC2
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
