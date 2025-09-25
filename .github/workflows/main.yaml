@@ -58,16 +58,24 @@ jobs:
           docker push "$IMAGE_URI"
 
   # 3️⃣ Deploy Docker Image to EC2
+  # 3️⃣ Deploy Docker Image to EC2
   deploy_to_ec2:
     needs: build_and_push_ecr
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to EC2
         run: |
+          if [ -z "${{ secrets.EC2_INSTANCE_IP }}" ]; then
+            echo "Error: EC2_INSTANCE_IP secret is not set"
+            exit 1
+          fi
+
           IMAGE_URI="${{ secrets.AWS_ECR_LOGIN_URI }}/${{ secrets.ECR_REPOSITORY_NAME }}:latest"
+          echo "Deploying $IMAGE_URI to EC2 ${{ secrets.EC2_INSTANCE_IP }}"
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_INSTANCE_IP }} "
             docker pull $IMAGE_URI &&
             docker stop my_app || true &&
             docker rm my_app || true &&
             docker run -d --name my_app -p 8080:8080 $IMAGE_URI
           "
+
